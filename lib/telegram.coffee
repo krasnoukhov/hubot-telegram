@@ -5,96 +5,121 @@ class Telegram extends Adapter
 
     constructor: ->
         super
+        self = @
 
         @token      = process.env['TELEGRAM_TOKEN']
-        @webHook    = process.env['TELEGRAM_WEBHOOK']
+        @web_hook   = process.env['TELEGRAM_WEBHOOK']
+        @privacy    = process.env['TELEGRAM_PRIVACY']
+        @interval   = process.env['TELEGRAM_INTERVAL'] || 2000
         @offset     = 0
-        @robot.logger.info "Telegram Adapter Bot " + @bot_id + " Loaded..."
+        @api        = new telegrambot(@token)
+
+        @robot.logger.info "Telegram Adapter Bot " + @token + " Loaded..."
 
         # Get the bot information
-        telegrambot.invoke 'getMe', {}, function (err, result) ->
+        @api.invoke 'getMe', {}, (err, result) ->
             if (err)
                 self.emit 'error', err
             else
-                console.log(result)
-                @bot_id = result.id
+                self.bot_id = result.id
+                self.bot_username = result.username
+                self.bot_firstname = result.first_name
+                self.robot.logger.info "Telegram Bot Identified: " + self.bot_firstname
 
-    /**
-     * Get the last offset + 1, this will allow
-     * the Telegram API to only return new relevant messages
-     *
-     * @return int
-     */
+    ###*
+    # Get the last offset + 1, this will allow
+    # the Telegram API to only return new relevant messages
+    #
+    # @return int
+    ###
     getLastOffset: ->
         parseInt(@offset) + 1
 
+    ###*
+    # Send a message to a specific room via the Telegram API
+    ###
     send: (envelope, strings...) ->
+        self = @
 
-        #data =
-        #    url: "#{@api_url}/sendMessage"
-        #    form:
-        #        chat_id: envelope.room
-        #        text: strings.join()
+        @api.invoke 'sendMessage', { chat_id: envelope.room, text: strings.join() }, (err, message) =>
 
-        #request.post data, (err, res, body) =>
-        #    @robot.logger.info res.statusCode
+            if (err)
+                self.emit 'error', err
+            else
+                self.robot.logger.info "Sending message to room: " + envelope.room
 
+    ###*
+    # The only difference between send() and reply() is that we add the "reply_to_message_id" parameter when
+    # calling the API
+    ###
     reply: (envelope, strings...) ->
+        self = @
 
-        #data =
-        #    url: "#{@api_url}/sendMessage"
-        #    form:
-        #        chat_id: envelope.room
-        #        text: strings.join()
+        @telegram.invoke 'sendMessage', { chat_id: envelope.room, text: strings.join(), reply_to_message_id: envelope.message.id }, (err, message) =>
 
-        #request.post data, (err, res, body) =>
-        #    @robot.logger.info res.statusCode
+            if (err)
+                self.emit 'error', err
+            else
+                self.robot.logger.info "Reply message to room/message: " + envelope.room + "/" + envelope.id
 
-    receiveMsg: (msg) ->
+    ###*
+    # "Private" method to handle a new update received via a webhook
+    # or poll update.
+    ###
+    handleUpdate: (update) ->
 
-        #user = @robot.brain.userForId msg.message.from.id, name: msg.message.from.username, room: msg.message.chat.id
-        #text = msg.message.text
+        message = update.message
+        @robot.logger.info "Receiving message_id: " + message.message_id
 
         # Only if it's a text message, not join or leaving events
-        #if text
-            # If is a direct message to the bot, prepend the name
-        #    text = @robot.name + ' ' + msg.message.text if msg.message.chat.id > 0
-        #    message = new TextMessage user, text, msg.message_id
-        #    @receive message
-        #    @offset = msg.update_id
+        # TODO: handle join/leave events
+        if (typeof message.text != 'undefined')
+            text = message.text
+
+            # If we are running in privacy mode, strip out the stuff we don't need.
+            if (@privacy)
+                text = text.replace(/^\//g, '')
+                text = text.replace(new RegExp('@' + @bot_username + '', 'g'), '')
+
+            @robot.logger.debug "Received message: " + message.from.username + " said '" + text + "'"
+
+            # TODO: use the brain?
+            user = new User message.from.id, name: message.from.username, room: message.chat.id
+            @receive new TextMessage user, text, message.message_id
+
+        # Increment the current offset
+        @offset = update.update_id
 
     run: ->
         self = @
-        #@robot.logger.info "Run"
 
         unless @token
             @emit 'error', new Error 'The environment variable "TELEGRAM_TOKEN" is required.'
 
-        #if @webHook
-            # Call `setWebHook` to dynamically set the URL
-        #    data =
-        #        url: "#{@api_url}/setWebHook"
-        #        form:
-        #            url: @webHook
+        if @web_hook
 
-        #    request.post data, (err, res, body) =>
-        #        @robot.logger.info res.statusCode
+            @api.invoke 'setWebHook', { url: @web_hook }, (err, result) ->
+                if (err)
+                    self.emit 'error', err
 
-        #    @robot.router.post "/telegram/receive", (req, res) =>
-        #        console.log req.body
-        #        for msg in req.body.result
-        #            @robot.logger.info "WebHook"
-        #            @receiveMsg msg
-        #else
-        #    setInterval ->
-        #        url = "#{self.api_url}/getUpdates?offset=#{self.getLastOffset()}"
-        #        self.robot.http(url).get() (err, res, body) ->
-        #            self.emit 'error', new Error err if err
-        #            updates = JSON.parse body
-        #            for msg in updates.result
-        #                self.receiveMsg msg
-        #    , 2000
+            @robot.router.post "/hubot/telegram/receive", (req, res) =>
+                for msg in req.body.result
+                    self.handleUpdate msg
 
+        else
+            setInterval ->
+
+                self.api.invoke 'getUpdates', { offset: self.getLastOffset(), limit: 10 }, (err, result) ->
+
+                    if (err)
+                        self.emit 'error', err
+                    else
+                        for msg in result
+                            self.handleUpdate msg
+
+            , @interval
+
+        @robot.logger.info "Telegram Adapter Started..."
         @emit "connected"
 
 exports.use = (robot) ->
