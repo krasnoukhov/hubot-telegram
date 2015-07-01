@@ -14,7 +14,7 @@ First of read the docs on how to create a new [Telegram Bot](https://core.telegr
 
 This adapter uses the following environment variables:
 
-*TELEGRAM_TOKEN* (required)
+**TELEGRAM_TOKEN** (required)
 
 The token that the [BotFather](https://core.telegram.org/bots#botfather) gives you
 
