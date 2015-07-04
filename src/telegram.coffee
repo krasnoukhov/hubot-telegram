@@ -9,40 +9,47 @@ class Telegram extends Adapter
 
     @token = process.env['TELEGRAM_TOKEN']
     @webHook = process.env['TELEGRAM_WEBHOOK']
+    @debug = process.env['TELEGRAM_DEBUG']
     @api_url = "https://api.telegram.org/bot#{@token}"
     @offset = 0
-    
+
     # Get the Bot Id and name...not used by now
     request "#{@api_url}/getMe", (err, res, body) =>
       @id = JSON.parse(body).result.id if res.statusCode == 200
-    
+
   send: (envelope, strings...) ->
-   
+
     data =
       url: "#{@api_url}/sendMessage"
       form:
         chat_id: envelope.room
         text: strings.join()
-    
+
+    @robot.logger.info "Send:", data if @debug
+
     request.post data, (err, res, body) =>
       @robot.logger.info res.statusCode
 
   reply: (envelope, strings...) ->
-  
+
     data =
       url: "#{@api_url}/sendMessage"
       form:
         chat_id: envelope.room
         text: strings.join()
-    
+
+    @robot.logger.info "Reply:", data if @debug
+
     request.post data, (err, res, body) =>
-      @robot.logger.info res.statusCode    
+      @robot.logger.info res.statusCode
 
   receiveMsg: (msg) ->
-    
+
     user = @robot.brain.userForId msg.message.from.id, name: msg.message.from.username, room: msg.message.chat.id
     text = msg.message.text
-    
+
+    @robot.logger.info "Receive:", msg if @debug
+
     # Only if it's a text message, not join or leaving events
     if text
       # If is a direct message to the bot, prepend the name
@@ -54,24 +61,24 @@ class Telegram extends Adapter
   getLastOffset: ->
     # Increment the last offset
     parseInt(@offset) + 1
-    
+
   run: ->
     self = @
     @robot.logger.info "Run"
-    
+
     unless @token
       @emit 'error', new Error `'The environment variable \`\033[31mTELEGRAM_TOKEN\033[39m\` is required.'`
-    
+
     if @webHook
       # Call `setWebHook` to dynamically set the URL
       data =
         url: "#{@api_url}/setWebHook"
         form:
           url: @webHook
-      
+
       request.post data, (err, res, body) =>
         @robot.logger.info res.statusCode
-      
+
       @robot.router.post "/telegram/receive", (req, res) =>
         console.log req.body
         for msg in req.body.result
@@ -88,6 +95,6 @@ class Telegram extends Adapter
       , 2000
 
     @emit "connected"
-      
+
 exports.use = (robot) ->
   new Telegram robot
