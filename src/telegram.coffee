@@ -80,10 +80,15 @@ class Telegram extends Adapter
         @robot.logger.info res.statusCode
 
       @robot.router.post "/telegram/receive", (req, res) =>
-        console.log req.body
-        for msg in req.body.result
-          @robot.logger.info "WebHook"
-          @receiveMsg msg
+        try
+          if typeof req.body is "array"
+            for msg in req.body
+              @receiveMsg msg
+          else
+            @receiveMsg req.body
+        catch error
+          @robot.logger.error "Error: #{error}"
+          @robot.logger.info req.body
     else
       setInterval ->
         url = "#{self.api_url}/getUpdates?offset=#{self.getLastOffset()}"
