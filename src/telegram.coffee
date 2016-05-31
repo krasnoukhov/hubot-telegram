@@ -46,14 +46,15 @@ class Telegram extends Adapter
   receiveMsg: (msg) ->
     @robot.logger.info "Receive:", msg if @debug
 
-    user = @robot.brain.userForId msg.message.from.id, name: msg.message.from.username, room: msg.message.chat.id
-    text = msg.message.text
+    message = msg.message || msg.edited_message
+    user = @robot.brain.userForId message.from.id, name: message.from.username, room: message.chat.id
+    text = message.text
 
     # Only if it's a text message, not join or leaving events
     if text
       # If is a direct message to the bot, prepend the name
-      text = @robot.name + ' ' + msg.message.text if msg.message.chat.id > 0
-      message = new TextMessage user, text, msg.message_id
+      text = @robot.name + ' ' + message.text if message.chat.id > 0
+      message = new TextMessage user, text, message.message_id
       @receive message
       @offset = msg.update_id
 
