@@ -44,11 +44,10 @@ class Telegram extends Adapter
       @robot.logger.info res.statusCode
 
   receiveMsg: (msg) ->
+    @robot.logger.info "Receive:", msg if @debug
 
     user = @robot.brain.userForId msg.message.from.id, name: msg.message.from.username, room: msg.message.chat.id
     text = msg.message.text
-
-    @robot.logger.info "Receive:", msg if @debug
 
     # Only if it's a text message, not join or leaving events
     if text
